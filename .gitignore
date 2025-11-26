@@ -3,7 +3,7 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
-.env
+# .env
 world/behavior_packs
 world/resource_packs
 world/*.mcworld
