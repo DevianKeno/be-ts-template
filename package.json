@@ -5,6 +5,7 @@
 	"description": "Minecraft Bedrock Edition Add-On",
 	"private": true,
 	"devDependencies": {
+		"@diamondcraft/be-ts-utils": "github:DiamondCraft-Studios/mcbe-ts-utils",
 		"@minecraft/core-build-tasks": "^5.2.0",
 		"@types/adm-zip": "^0.5.7",
 		"adm-zip": "^0.5.16",
