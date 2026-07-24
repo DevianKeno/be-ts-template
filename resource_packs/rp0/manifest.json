@@ -20,5 +20,6 @@
 			"uuid": "BEHAVIOR PACK GUID",
 			"version": "1.0.0"
 		}
-	]
+	],
+	"capabilities": ["pbr"]
 }
