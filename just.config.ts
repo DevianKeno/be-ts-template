@@ -19,6 +19,7 @@ import { argv, parallel, series, task, tscTask } from "just-scripts";
 import AdmZip from "adm-zip";
 import fs from "fs";
 import { generateBlockIds } from "./.scripts/codegen/blocks";
+import { generateBlockSoundIds } from "./.scripts/codegen/block-sounds";
 import { generateBlockStateIds } from "./.scripts/codegen/block-states";
 import { generateEntityEventIds } from "./.scripts/codegen/entity-events";
 import { generateEntityIds } from "./.scripts/codegen/entities";
@@ -401,6 +402,7 @@ function codegenIdsTask() {
 
 		const generators = {
 			["blocks"]: generateBlockIds,
+			["block-sounds"]: generateBlockSoundIds,
 			["block-states"]: generateBlockStateIds,
 			["entities"]: generateEntityIds,
 			["entity-events"]: generateEntityEventIds,
@@ -412,6 +414,7 @@ function codegenIdsTask() {
 
 		if (!arg) {
 			await generators["blocks"]();
+			await generators["block-sounds"]();
 			await generators["block-states"]();
 			await generators["entities"]();
 			await generators["entity-events"]();
