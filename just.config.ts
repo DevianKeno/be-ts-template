@@ -316,18 +316,25 @@ function mpBundleTask(options: ZipTaskParameters) {
 		fs.mkdirSync(path.join(marketingDir), { recursive: true });
 		fs.mkdirSync(path.join(storeDir), { recursive: true });
 
-		const contentSp = path.join(contentDir, "skin_pack");
-		fs.mkdirSync(path.join(contentSp), { recursive: true });
+		if (process.env.SKIN_PACKS === "true") {
+			const contentSp = path.join(contentDir, "skin_pack");
+			fs.mkdirSync(path.join(contentSp), { recursive: true });
+
+			const skinSrcDir = path.resolve(process.cwd(), "skin_pack");
+			copyRecursiveSync(skinSrcDir, contentSkin);
+		}
 
 		console.log(`... Copying content`);
 
-		copyRecursiveSync(bpSrcDir, contentBp);
-		copyRecursiveSync(rpSrcDir, contentRp);
+		if (process.env.TYPE === "AddOn") {
+			copyRecursiveSync(bpOutDir, contentBp);
+			copyRecursiveSync(rpOutDir, contentRp);
+		}
 
-		const skinSrcDir = path.resolve(process.cwd(), "skin_pack");
-		copyRecursiveSync(skinSrcDir, contentSkin);
-		// Use world_template folder with bp and rp copied already
-		copyRecursiveSync(worldTemplateOutDir, contentWt);
+		if (process.env.TYPE === "WorldTemplate" || process.env.TYPE === "MashUp") {
+			// Use world_template folder with bp and rp copied already
+			copyRecursiveSync(worldTemplateOutDir, contentWt);
+		}
 
 		const marktArtSrc = path.resolve(process.cwd(), "content", "Marketing Art");
 		const storeArtSrc = path.resolve(process.cwd(), "content", "Store Art");
