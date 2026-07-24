@@ -17,9 +17,9 @@ import {
 import { argv, parallel, series, task, tscTask } from "just-scripts";
 
 import AdmZip from "adm-zip";
+import fg from "fast-glob";
 import fs from "fs";
 import { generateBlockIds } from "./.scripts/codegen/blocks";
-import { generateBlockSoundIds } from "./.scripts/codegen/block-sounds";
 import { generateBlockStateIds } from "./.scripts/codegen/block-states";
 import { generateEntityEventIds } from "./.scripts/codegen/entity-events";
 import { generateEntityIds } from "./.scripts/codegen/entities";
@@ -27,6 +27,7 @@ import { generateEntityPropertyIds } from "./.scripts/codegen/entity-properties"
 import { generateItemIds } from "./.scripts/codegen/items";
 import { generateParticleIds } from "./.scripts/codegen/particles";
 import { generateSoundIds } from "./.scripts/codegen/sounds";
+import { parse } from "jsonc-parser";
 import path from "path";
 
 // Setup env variables
@@ -43,11 +44,9 @@ if (fs.existsSync(localEnv)) {
 }
 
 const PROJECT_NAME = getOrThrowFromProcess("PROJECT_NAME");
+const ADDON_VERSION = getAddonVersion();
 const BP_PACK_NAME = "bp0";
 const RP_PACK_NAME = "rp0";
-const MCWORLD_NAME = getOrThrowFromProcess("MCWORLD_NAME");
-
-const DEPLOYED_WORLD_NAME = "deployed_world";
 
 const bundleTaskOptions: BundleTaskParameters = {
 	entryPoint: path.join(__dirname, "./scripts/main.ts"),
@@ -66,7 +65,7 @@ const copyTaskOptions: CopyTaskParameters = {
 
 const mcaddonTaskOptions: ZipTaskParameters = {
 	...copyTaskOptions,
-	outputFile: `./dist/packages/${MCWORLD_NAME}.mcaddon`,
+	outputFile: `./dist/packages/${PROJECT_NAME}.mcaddon`,
 };
 
 export type McworldTaskParameters = ZipTaskParameters & {
@@ -111,13 +110,13 @@ task("mcaddon", series("clean-local", "build", "createMcaddonFile"));
 
 const mcworldTaskOptions: McworldTaskParameters = {
 	...copyTaskOptions,
-	outputFile: `./dist/packages/${MCWORLD_NAME}-${process.env.ADD_ON_VERSION}.mcworld`,
+	outputFile: `./dist/packages/${PROJECT_NAME}-${ADDON_VERSION}.mcworld`,
 	isTestWorld: false,
 };
 
 const mcworldTestTaskOptions: McworldTaskParameters = {
 	...copyTaskOptions,
-	outputFile: `./dist/packages/${MCWORLD_NAME}-testplace-${process.env.ADD_ON_VERSION}.mcworld`,
+	outputFile: `./dist/packages/${PROJECT_NAME}-testplace-${ADDON_VERSION}.mcworld`,
 	isTestWorld: true,
 };
 
@@ -142,7 +141,7 @@ task("mpBundle", series("clean-local", "build", "marketplaceBundle"));
 task(
 	"ldp-world",
 	localDeployWorldTask({
-		worldName: DEPLOYED_WORLD_NAME,
+		worldName: getDeployedWorldName(),
 		isTestWorld: false,
 		server: false,
 	})
@@ -152,7 +151,7 @@ task(
 task(
 	"ldp-world-test",
 	localDeployWorldTask({
-		worldName: DEPLOYED_WORLD_NAME,
+		worldName: getDeployedWorldName(),
 		isTestWorld: true,
 		server: false,
 	})
@@ -161,7 +160,7 @@ task(
 task(
 	"ldp-world-server",
 	localDeployWorldTask({
-		worldName: DEPLOYED_WORLD_NAME,
+		worldName: getDeployedWorldName(),
 		isTestWorld: false,
 		server: true,
 	})
@@ -170,7 +169,7 @@ task(
 task(
 	"ldp-world-test-server",
 	localDeployWorldTask({
-		worldName: DEPLOYED_WORLD_NAME,
+		worldName: getDeployedWorldName(),
 		isTestWorld: true,
 		server: true,
 	})
@@ -236,47 +235,6 @@ function mcworldTask(options: McworldTaskParameters) {
 		zip.writeZip(outputMcwFile);
 
 		console.log(`✅ Created .mcworld ${outputMcwFile}`);
-
-		return Promise.resolve();
-	};
-}
-
-/**
- * Deploys a target world to the Minecraft worlds directory.
- */
-function localDeployWorldTask(options: LocalDeployWorldParameters) {
-	return async (context: any) => {
-		const WORLD_LOCAL_DEPLOY_PATH = getOrThrowFromProcess("WORLD_LOCAL_DEPLOY_PATH");
-		const SERVER_WORLD_LOCAL_DEPLOY_PATH = getOrThrowFromProcess("SERVER_WORLD_LOCAL_DEPLOY_PATH");
-		const SERVER_WORLD_NAME = getOrThrowFromProcess("SERVER_WORLD_NAME");
-		const WORLD_TEMPLATE_SRC_DIR = getOrThrowFromProcess("WORLD_TEMPLATE_SRC_DIR");
-		const TEST_WORLD_SRC_DIR = getOrThrowFromProcess("TEST_WORLD_SRC_DIR");
-
-		const worldDir = path.resolve(__dirname, options.isTestWorld ? TEST_WORLD_SRC_DIR : WORLD_TEMPLATE_SRC_DIR);
-
-		if (!fs.existsSync(worldDir)) {
-			console.error("World folder not found");
-		}
-		if (!fs.existsSync(worldDir)) {
-			console.error(`World template not found. Please create a directory '${worldDir}' in the project.`);
-		}
-		if (fs.readdirSync(worldDir).length === 0) {
-			console.warn(`World template directory '${worldDir}' is empty!`);
-		}
-
-		const destPath = path.resolve(
-			options.server ? SERVER_WORLD_LOCAL_DEPLOY_PATH : WORLD_LOCAL_DEPLOY_PATH,
-			options.server ? SERVER_WORLD_NAME : options.worldName
-		);
-
-		if (fs.existsSync(destPath)) {
-			console.error(`Found existing world at '${destPath}'`);
-			fs.rmSync(destPath, { recursive: true, force: true });
-		}
-
-		console.log(`... Deploying world to '${destPath}'`);
-		copyRecursiveSync(worldDir, destPath);
-		console.log(`Deployed world to '${destPath}'`);
 
 		return Promise.resolve();
 	};
@@ -349,8 +307,9 @@ function mpBundleTask(options: ZipTaskParameters) {
 		const marketingDir = path.join(bundlesDir, "Marketing Art");
 		const storeDir = path.join(bundlesDir, "Store Art");
 
-		const contentBp = path.join(contentDir, "behavior_packs", BP_PACK_NAME);
-		const contentRp = path.join(contentDir, "resource_packs", RP_PACK_NAME);
+		const contentBp = path.join(contentDir, "behavior_packs");
+		const contentRp = path.join(contentDir, "resource_packs");
+		const contentSkin = path.join(contentDir, "skin_pack");
 		const contentWt = path.join(contentDir, "world_template");
 
 		fs.mkdirSync(path.join(contentDir), { recursive: true });
@@ -364,8 +323,16 @@ function mpBundleTask(options: ZipTaskParameters) {
 
 		copyRecursiveSync(bpSrcDir, contentBp);
 		copyRecursiveSync(rpSrcDir, contentRp);
+
+		const skinSrcDir = path.resolve(process.cwd(), "skin_pack");
+		copyRecursiveSync(skinSrcDir, contentSkin);
 		// Use world_template folder with bp and rp copied already
 		copyRecursiveSync(worldTemplateOutDir, contentWt);
+
+		const marktArtSrc = path.resolve(process.cwd(), "content", "Marketing Art");
+		const storeArtSrc = path.resolve(process.cwd(), "content", "Store Art");
+		copyRecursiveSync(marktArtSrc, marketingDir);
+		copyRecursiveSync(storeArtSrc, storeDir);
 
 		console.log(`✅ Done copying content`);
 
@@ -386,6 +353,47 @@ function mpBundleTask(options: ZipTaskParameters) {
 	};
 }
 
+/**
+ * Deploys a target world to the Minecraft worlds directory.
+ */
+function localDeployWorldTask(options: LocalDeployWorldParameters) {
+	return async (context: any) => {
+		const WORLD_LOCAL_DEPLOY_PATH = getOrThrowFromProcess("WORLD_LOCAL_DEPLOY_PATH");
+		const SERVER_WORLD_LOCAL_DEPLOY_PATH = getOrThrowFromProcess("SERVER_WORLD_LOCAL_DEPLOY_PATH");
+		const SERVER_WORLD_NAME = getOrThrowFromProcess("SERVER_WORLD_NAME");
+		const WORLD_TEMPLATE_SRC_DIR = getOrThrowFromProcess("WORLD_TEMPLATE_SRC_DIR");
+		const TEST_WORLD_SRC_DIR = getOrThrowFromProcess("TEST_WORLD_SRC_DIR");
+
+		const worldDir = path.resolve(__dirname, options.isTestWorld ? TEST_WORLD_SRC_DIR : WORLD_TEMPLATE_SRC_DIR);
+
+		if (!fs.existsSync(worldDir)) {
+			console.error("World folder not found");
+		}
+		if (!fs.existsSync(worldDir)) {
+			console.error(`World template not found. Please create a directory '${worldDir}' in the project.`);
+		}
+		if (fs.readdirSync(worldDir).length === 0) {
+			console.warn(`World template directory '${worldDir}' is empty!`);
+		}
+
+		const destPath = path.resolve(
+			options.server ? SERVER_WORLD_LOCAL_DEPLOY_PATH : WORLD_LOCAL_DEPLOY_PATH,
+			options.server ? SERVER_WORLD_NAME : options.worldName
+		);
+
+		if (fs.existsSync(destPath)) {
+			console.error(`Found existing world at '${destPath}'`);
+			fs.rmSync(destPath, { recursive: true, force: true });
+		}
+
+		console.log(`... Deploying world to '${destPath}'`);
+		copyRecursiveSync(worldDir, destPath);
+		console.log(`Deployed world to '${destPath}'`);
+
+		return Promise.resolve();
+	};
+}
+
 function codegenIdsTask() {
 	return async (context: any) => {
 		const args = process.argv;
@@ -393,7 +401,6 @@ function codegenIdsTask() {
 
 		const generators = {
 			["blocks"]: generateBlockIds,
-			["block-sounds"]: generateBlockSoundIds,
 			["block-states"]: generateBlockStateIds,
 			["entities"]: generateEntityIds,
 			["entity-events"]: generateEntityEventIds,
@@ -405,7 +412,6 @@ function codegenIdsTask() {
 
 		if (!arg) {
 			await generators["blocks"]();
-			await generators["block-sounds"]();
 			await generators["block-states"]();
 			await generators["entities"]();
 			await generators["entity-events"]();
@@ -429,7 +435,7 @@ function cleanAllTask() {
 	return async (context: any) => {
 		const WORLD_LOCAL_DEPLOY_PATH = getOrThrowFromProcess("WORLD_LOCAL_DEPLOY_PATH");
 
-		const deployedWorldPath = path.resolve(WORLD_LOCAL_DEPLOY_PATH, DEPLOYED_WORLD_NAME);
+		const deployedWorldPath = path.resolve(WORLD_LOCAL_DEPLOY_PATH, PROJECT_NAME);
 
 		if (fs.existsSync(deployedWorldPath)) {
 			console.error(`Found deployed world at '${deployedWorldPath}', removing...`);
@@ -440,6 +446,29 @@ function cleanAllTask() {
 		console.log(`Finished clean all`);
 		return Promise.resolve();
 	};
+}
+
+function getAddonVersion(): string {
+	const matches = fg.sync("behavior_packs/**/manifest.json");
+
+	if (matches.length === 0) {
+		throw new Error("No behavior pack manifest.json found.");
+	}
+
+	const json = parse(fs.readFileSync(matches[0], "utf8"));
+	const version = json.header?.version;
+	console.log(`Found addon version: ${version}`);
+
+	if (Array.isArray(version)) {
+		if (version.length !== 3) throw new Error(`Invalid version in '${matches[0]}'`);
+		return version.join(".");
+	}
+
+	return version;
+}
+
+function getDeployedWorldName() {
+	return PROJECT_NAME ?? "_deployed_world";
 }
 
 function copyRecursiveSync(src: string, dest: string) {
