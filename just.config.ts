@@ -35,6 +35,12 @@ if (process.env.CI) {
 	setupEnvironment(path.resolve(__dirname, ".env"));
 }
 
+// Machine-specific overrides
+const localEnv = path.resolve(__dirname, ".env-local");
+if (fs.existsSync(localEnv)) {
+	setupEnvironment(localEnv);
+}
+
 const PROJECT_NAME = getOrThrowFromProcess("PROJECT_NAME");
 const BP_PACK_NAME = "bp0";
 const RP_PACK_NAME = "rp0";
